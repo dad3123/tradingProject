@@ -323,11 +323,16 @@ def backtest_symbol(
         trail_type=bf_cfg.get('trail_type', 'modified'),
     )
 
-    # Precompute signals for each bar (O(n), each call is O(1))
-    signals = [
-        get_signal(hma1_arr[:i + 1], hma2_arr[:i + 1], hma3_arr[:i + 1], trend_arr[:i + 1])
-        for i in range(len(df))
-    ]
+    # Precompute signals for each bar.
+    # get_signal() only reads [-1] and [-2], so we pass a 2-element window
+    # instead of growing slices, avoiding repeated view object creation.
+    signals = ["HOLD"] * len(df)
+    for i in range(1, len(df)):
+        h1 = hma1_arr[i - 1 : i + 1]
+        h2 = hma2_arr[i - 1 : i + 1]
+        h3 = hma3_arr[i - 1 : i + 1]
+        tr = trend_arr[i - 1 : i + 1]
+        signals[i] = get_signal(h1, h2, h3, tr)
 
     return _simulate_trades(df, signals, trail_arr, warmup, cfg, symbol_info, account_balance, symbol)
 
