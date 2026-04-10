@@ -24,13 +24,13 @@ class TestGetOhlcv:
     @patch('data_feed.mt5')
     def test_returns_dataframe(self, mock_mt5):
         mock_mt5.copy_rates_from_pos.return_value = self._make_mt5_rates(50)
-        mock_mt5.TIMEFRAME_M15 = 16385
 
         df = get_ohlcv("XAUUSD", "M15", bars=50)
 
         assert isinstance(df, pd.DataFrame)
         assert list(df.columns) == ['open', 'high', 'low', 'close']
         assert len(df) == 50
+        assert df.index.tz is not None  # Must be timezone-aware UTC
 
     @patch('data_feed.mt5')
     def test_raises_on_none(self, mock_mt5):
@@ -41,3 +41,6 @@ class TestGetOhlcv:
 
     def test_timeframe_map_contains_m15(self):
         assert "M15" in MT5_TIMEFRAME_MAP
+
+    def test_timeframe_map_m15_value(self):
+        assert MT5_TIMEFRAME_MAP["M15"] == 16390  # MT5 TIMEFRAME_M15 constant

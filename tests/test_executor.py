@@ -52,6 +52,29 @@ class TestPlaceOrder:
         assert result is None
         mock_mt5.order_send.assert_not_called()
 
+    @patch('executor.mt5')
+    def test_sell_order_placed(self, mock_mt5):
+        mock_mt5.positions_get.return_value = ()
+        mock_mt5.ORDER_TYPE_SELL = 1
+        mock_mt5.TRADE_ACTION_DEAL = 1
+        mock_mt5.ORDER_TIME_GTC = 1
+        mock_mt5.ORDER_FILLING_IOC = 1
+        tick = MagicMock()
+        tick.bid = 1999.5
+        mock_mt5.symbol_info_tick.return_value = tick
+        result = MagicMock()
+        result.retcode = 10009
+        mock_mt5.order_send.return_value = result
+        result = place_order("XAUUSD", "SELL", lots=0.01, sl=2100.0, tp=1800.0)
+        assert mock_mt5.order_send.called
+
+    @patch('executor.mt5')
+    def test_invalid_signal_raises(self, mock_mt5):
+        mock_mt5.positions_get.return_value = ()
+        import pytest
+        with pytest.raises(ValueError, match="Unknown signal"):
+            place_order("XAUUSD", "HOLD", lots=0.01, sl=1900.0, tp=2200.0)
+
 
 class TestGetSymbolInfo:
     @patch('executor.mt5')
