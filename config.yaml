@@ -1,3 +1,10 @@
+mode: backtest             # live | backtest
+
+backtest:
+  start_date: "2025-10-10" # 回测开始日期
+  end_date: "2026-04-10"   # 回测结束日期
+  initial_balance: 10000.0 # 初始资金（null 则使用账户实际余额）
+
 mt5:
   login: 12345678          # 替换为你的账号
   password: "your_password" # 替换为你的密码

@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 import yaml
 
@@ -6,8 +7,6 @@ try:
     import MetaTrader5 as mt5
 except ImportError:
     mt5 = None
-
-import scheduler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,10 +39,27 @@ def connect_mt5(cfg: dict) -> None:
     logger.info(f"Connected to MT5: account={info.login}, balance={info.balance} {info.currency}")
 
 
+def _run_backtest() -> None:
+    scripts_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scripts')
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    import backtest as backtest_mod
+    backtest_mod.main()
+
+
 def main():
     cfg = load_config()
-    logger.info("Config loaded.")
+    mode = cfg.get('mode', 'live')
+    if mode not in ('live', 'backtest'):
+        logger.warning(f"Unknown mode '{mode}', defaulting to 'live'")
+        mode = 'live'
+    logger.info(f"Mode: {mode}")
 
+    if mode == 'backtest':
+        _run_backtest()
+        return
+
+    import scheduler
     connect_mt5(cfg)
 
     try:

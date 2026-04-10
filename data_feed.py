@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pandas as pd
 
 try:
@@ -50,6 +52,43 @@ def get_ohlcv(symbol: str, timeframe: str, bars: int) -> pd.DataFrame:
 
     if rates is None:
         raise RuntimeError(f"Failed to fetch OHLCV for {symbol} {timeframe}")
+
+    df = pd.DataFrame(rates)
+    df['time'] = pd.to_datetime(df['time'], unit='s', utc=True)
+    df.set_index('time', inplace=True)
+    df = df[['open', 'high', 'low', 'close']]
+    return df
+
+
+def get_ohlcv_range(
+    symbol: str,
+    timeframe: str,
+    date_from: datetime,
+    date_to: datetime,
+) -> pd.DataFrame:
+    """
+    Fetch historical OHLCV data from MT5 for a specific date range.
+
+    Args:
+        symbol:    Symbol code e.g. "XAUUSD"
+        timeframe: Timeframe string e.g. "M15"
+        date_from: Start datetime (UTC, inclusive)
+        date_to:   End datetime (UTC, inclusive)
+
+    Returns:
+        DataFrame with columns ['open', 'high', 'low', 'close'],
+        index is datetime (UTC), ascending order, newest bar is last row.
+
+    Raises:
+        RuntimeError: When MT5 is not installed or returns None
+    """
+    if mt5 is None:
+        raise RuntimeError("MetaTrader5 is not installed; cannot call get_ohlcv_range")
+    tf = MT5_TIMEFRAME_MAP[timeframe]
+    rates = mt5.copy_rates_range(symbol, tf, date_from, date_to)
+
+    if rates is None:
+        raise RuntimeError(f"Failed to fetch OHLCV range for {symbol} {timeframe}")
 
     df = pd.DataFrame(rates)
     df['time'] = pd.to_datetime(df['time'], unit='s', utc=True)

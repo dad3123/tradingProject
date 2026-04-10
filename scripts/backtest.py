@@ -13,6 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dataclasses import dataclass
 from typing import Any
 
+from datetime import datetime, timedelta, timezone
+
 import numpy as np
 import pandas as pd
 import yaml
@@ -22,7 +24,7 @@ try:
 except ImportError:
     mt5 = None
 
-from data_feed import get_ohlcv
+from data_feed import get_ohlcv, get_ohlcv_range
 from indicators.hma import hma
 from indicators.blackflag import blackflag
 from signal_engine import get_signal
@@ -30,8 +32,11 @@ from risk_manager import SymbolInfo, calculate_trade_params
 from executor import get_symbol_info
 
 
-# 最近6个月 15min K线根数（约17280根）
-SIX_MONTHS_BARS = 17_280
+# 各时间框架对应的分钟数，用于计算 warmup 时间偏移
+_TF_MINUTES = {
+    'M1': 1, 'M5': 5, 'M15': 15, 'M30': 30,
+    'H1': 60, 'H4': 240, 'D1': 1440,
+}
 
 
 @dataclass
@@ -297,14 +302,16 @@ def backtest_symbol(
     cfg: dict,
     symbol_info: SymbolInfo,
     account_balance: float,
+    warmup_override: int | None = None,
 ) -> list[Trade]:
     """
     Compute all indicators + signals on df, then simulate trades.
-    df must include warmup bars (warmup = cfg['scheduler']['warmup_bars']).
+    df must include warmup bars.
+    warmup_override: if provided, use this index as warmup instead of cfg value.
     """
     hma_cfg  = cfg['indicators']['hma']
     bf_cfg   = cfg['indicators']['blackflag']
-    warmup   = cfg['scheduler']['warmup_bars']
+    warmup   = warmup_override if warmup_override is not None else cfg['scheduler']['warmup_bars']
     source_col = hma_cfg.get('source', 'close')
 
     source = df[source_col].values
@@ -347,8 +354,17 @@ def main() -> None:
     with open(config_path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
-    warmup = cfg['scheduler']['warmup_bars']
-    total_bars = SIX_MONTHS_BARS + warmup + 1  # +1: drop the forming candle
+    warmup_bars = cfg['scheduler']['warmup_bars']
+
+    # ── Backtest date range ───────────────────────────────────────────────
+    bt_cfg     = cfg.get('backtest', {})
+    start_date = pd.Timestamp(bt_cfg.get('start_date', '2025-10-10'), tz='UTC')
+    end_date   = pd.Timestamp(bt_cfg.get('end_date',   '2026-04-10'), tz='UTC')
+    # Extend fetch start back by 2× warmup to ensure enough warm-up bars
+    tf_min       = _TF_MINUTES.get(cfg['timeframe'], 15)
+    warmup_delta = timedelta(minutes=warmup_bars * tf_min * 2)
+    fetch_from   = (start_date - warmup_delta).to_pydatetime()
+    fetch_to     = end_date.to_pydatetime()
 
     # ── Connect to MT5 ────────────────────────────────────────────────────
     if not mt5.initialize():
@@ -368,7 +384,9 @@ def main() -> None:
         print("Cannot get account info")
         mt5.shutdown()
         sys.exit(1)
-    account_balance = account_info.balance
+    # 优先使用配置中的 initial_balance，其次使用账户实际余额
+    initial_balance_cfg = bt_cfg.get('initial_balance')
+    account_balance = float(initial_balance_cfg) if initial_balance_cfg is not None else account_info.balance
 
     # ── Output file ───────────────────────────────────────────────────────
     output_path = os.path.join(
@@ -381,17 +399,25 @@ def main() -> None:
     # ── Run backtest per symbol ───────────────────────────────────────────
     try:
         for symbol in cfg['symbols']:
-            print(f"[{symbol}] Fetching {total_bars} bars...")
-            df = get_ohlcv(symbol, cfg['timeframe'], bars=total_bars)
+            print(f"[{symbol}] Fetching data from {fetch_from.date()} to {fetch_to.date()}...")
+            df = get_ohlcv_range(symbol, cfg['timeframe'], fetch_from, fetch_to)
             df = df.iloc[:-1]  # drop forming candle (consistent with live scheduler)
+
+            # Determine actual warmup index: first bar >= start_date
+            warmup_idx = int(df.index.searchsorted(start_date))
+            if warmup_idx < warmup_bars:
+                warmup_idx = warmup_bars  # fallback: ensure minimum warmup
+            if warmup_idx >= len(df) - 1:
+                print(f"[{symbol}] Not enough data after warmup (total={len(df)}, warmup_idx={warmup_idx}), skipping.")
+                continue
 
             symbol_info = get_symbol_info(symbol)
 
-            print(f"[{symbol}] Simulating trades...")
-            trades = backtest_symbol(symbol, df, cfg, symbol_info, account_balance)
+            print(f"[{symbol}] {len(df)} bars loaded, warmup_idx={warmup_idx}. Simulating trades...")
+            trades = backtest_symbol(symbol, df, cfg, symbol_info, account_balance, warmup_override=warmup_idx)
 
-            stats = compute_stats(trades, account_balance)
-            start_time = df.index[warmup]
+            stats      = compute_stats(trades, account_balance)
+            start_time = df.index[warmup_idx]
             end_time   = df.index[-1]
 
             write_report(symbol, trades, stats, account_balance, start_time, end_time, output_path)
