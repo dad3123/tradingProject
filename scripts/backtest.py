@@ -10,7 +10,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -60,7 +60,7 @@ def _simulate_trades(
     symbol_info: SymbolInfo,
     account_balance: float,
     symbol: str,
-) -> list:
+) -> list[Trade]:
     """
     Core simulation loop. Processes bars from warmup onward.
     Does NOT call MT5 — fully testable with synthetic data.

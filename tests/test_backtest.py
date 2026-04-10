@@ -53,6 +53,7 @@ def test_buy_tp_exit():
     assert t.exit_reason == "止盈"
     assert t.exit_price == pytest.approx(104.0)
     assert t.pnl_usd == pytest.approx(200.0)   # (4/0.01)*1.0*0.5=200
+    assert t.exit_time == df.index[4]
 
 
 def test_sell_sl_exit():
@@ -89,9 +90,11 @@ def test_no_reentry_while_in_position():
     signals = ["HOLD"] * 10
     signals[3] = "BUY"
     signals[5] = "BUY"   # 持仓中，忽略
+    signals[8] = "BUY"   # 出场当根 bar，just_exited 应阻止重入
     trail_arr = np.zeros(10)
     trail_arr[3] = 98.0
     trail_arr[5] = 98.0
+    trail_arr[8] = 98.0
 
     trades = _simulate_trades(df, signals, trail_arr, WARMUP, CFG, SYMBOL_INFO, ACCOUNT_BALANCE, "TEST")
 
