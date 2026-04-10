@@ -210,3 +210,81 @@ def compute_stats(trades: list[Trade], account_balance: float) -> dict:
         "max_drawdown_pct": max_drawdown_pct,
         "avg_lots":         avg_lots,
     }
+
+
+def write_report(
+    symbol: str,
+    trades: list[Trade],
+    stats: dict,
+    account_balance: float,
+    start_time: Any,
+    end_time: Any,
+    output_path: str,
+) -> None:
+    """
+    Append a backtest report for one symbol to output_path (UTF-8, append mode).
+    Call once per symbol; main() removes the old file before the loop.
+    """
+    lines = []
+    sep = "=" * 72
+
+    start_str = start_time.strftime('%Y-%m-%d %H:%M') if hasattr(start_time, 'strftime') else str(start_time)
+    end_str   = end_time.strftime('%Y-%m-%d %H:%M')   if hasattr(end_time, 'strftime')   else str(end_time)
+
+    lines.append(sep)
+    lines.append(f"回测报告 - {symbol}")
+    lines.append(f"回测区间：{start_str} ~ {end_str}")
+    lines.append(f"初始资金：${account_balance:.2f}")
+    lines.append(sep)
+    lines.append("")
+
+    # ── 交易明细 ──────────────────────────────────────────────────────────
+    lines.append("【交易明细】")
+    header = (
+        f"{'#':<4} {'方向':<6} {'入场时间':<20} {'入场价':>10} {'手数':>6} "
+        f"{'止损价':>10} {'止盈价':>10} {'出场时间':<20} {'出场价':>10} "
+        f"{'出场原因':<8} {'盈亏(点数)':>12} {'盈亏(USD)':>12}"
+    )
+    lines.append(header)
+    lines.append("-" * 130)
+
+    for idx, t in enumerate(trades, 1):
+        et  = t.entry_time.strftime('%Y-%m-%d %H:%M') if hasattr(t.entry_time, 'strftime') else str(t.entry_time)
+        xt  = t.exit_time.strftime('%Y-%m-%d %H:%M')  if hasattr(t.exit_time, 'strftime')  else "—"
+        xp  = f"{t.exit_price:>10.2f}" if t.exit_price  is not None else f"{'—':>10}"
+        pp  = f"{t.pnl_points:>+12.2f}" if t.pnl_points is not None else f"{'—':>12}"
+        pu  = f"{t.pnl_usd:>+12.2f}"   if t.pnl_usd    is not None else f"{'—':>12}"
+        reason = t.exit_reason or "—"
+        lines.append(
+            f"{idx:<4} {t.direction:<6} {et:<20} {t.entry_price:>10.2f} {t.lots:>6.2f} "
+            f"{t.sl:>10.2f} {t.tp:>10.2f} {xt:<20} {xp} "
+            f"{reason:<8} {pp} {pu}"
+        )
+
+    lines.append("")
+
+    # ── 汇总统计 ──────────────────────────────────────────────────────────
+    lines.append("【汇总统计】")
+    lines.append(f"总交易次数：  {stats['total']}")
+    lines.append(f"盈利次数：    {stats['wins']}    胜率：{stats['win_rate']:.1f}%")
+    lines.append(f"亏损次数：    {stats['losses']}")
+    if stats['open']:
+        lines.append(f"未出场次数：  {stats['open']}")
+    lines.append("")
+    lines.append(f"每笔平均手数：{stats['avg_lots']:.2f}")
+    lines.append("")
+    lines.append(f"总盈利：   +${stats['total_profit']:,.2f}")
+    lines.append(f"总亏损：   -${abs(stats['total_loss']):,.2f}")
+    lines.append(f"净盈亏：   {stats['net_pnl']:+,.2f} USD")
+    lines.append("")
+    lines.append(f"平均单笔盈利：${stats['avg_profit']:,.2f}")
+    lines.append(f"平均单笔亏损：-${abs(stats['avg_loss']):,.2f}")
+    lines.append("")
+    lines.append(f"最大连续亏损次数：{stats['max_consec_loss']}")
+    lines.append(f"最大回撤：       -${stats['max_drawdown']:,.2f} ({stats['max_drawdown_pct']:.1f}%)")
+    lines.append("")
+    lines.append(sep)
+    lines.append("")
+
+    with open(output_path, 'a', encoding='utf-8') as f:
+        f.write('\n'.join(lines))

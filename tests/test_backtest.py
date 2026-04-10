@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 import numpy as np
 import pandas as pd
 import pytest
-from backtest import Trade, _simulate_trades, compute_stats
+from backtest import Trade, _simulate_trades, compute_stats, write_report
 from risk_manager import SymbolInfo
 
 SYMBOL_INFO = SymbolInfo(
@@ -175,3 +175,48 @@ def test_compute_stats_max_consec_loss():
     ]
     stats = compute_stats(trades, account_balance=10000.0)
     assert stats["max_consec_loss"] == 2
+
+
+def test_write_report_contains_required_fields(tmp_path):
+    """报告文件包含所有用户要求的字段。"""
+    t = pd.Timestamp("2025-01-01", tz="UTC")
+    trades = [
+        Trade(
+            symbol="TEST", direction="BUY",
+            entry_time=t, entry_price=100.0, lots=0.50,
+            sl=98.0, tp=104.0, entry_bar=3,
+            exit_time=t, exit_price=104.0, exit_reason="止盈",
+            pnl_points=4.0, pnl_usd=200.0,
+        ),
+        Trade(
+            symbol="TEST", direction="SELL",
+            entry_time=t, entry_price=100.0, lots=0.50,
+            sl=102.0, tp=96.0, entry_bar=5,
+            exit_time=t, exit_price=102.0, exit_reason="止损",
+            pnl_points=-2.0, pnl_usd=-100.0,
+        ),
+    ]
+    stats = compute_stats(trades, account_balance=10000.0)
+    output = str(tmp_path / "result.txt")
+
+    write_report(
+        symbol="TEST",
+        trades=trades,
+        stats=stats,
+        account_balance=10000.0,
+        start_time=t,
+        end_time=t,
+        output_path=output,
+    )
+
+    content = open(output, encoding="utf-8").read()
+    assert "初始资金" in content
+    assert "手数" in content
+    assert "总盈利" in content
+    assert "总亏损" in content
+    assert "胜率" in content
+    assert "止盈" in content
+    assert "止损" in content
+    assert "200" in content    # pnl_usd 正值出现
+    assert "-100" in content   # pnl_usd 负值出现
+    assert "10000" in content  # 初始资金
