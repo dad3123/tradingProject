@@ -9,6 +9,17 @@ class SymbolInfo:
     volume_max: float         # Maximum lot size
     volume_step: float        # Lot size step
 
+    def __post_init__(self):
+        for field_name, value in [
+            ("trade_tick_value", self.trade_tick_value),
+            ("trade_tick_size", self.trade_tick_size),
+            ("volume_min", self.volume_min),
+            ("volume_max", self.volume_max),
+            ("volume_step", self.volume_step),
+        ]:
+            if value <= 0:
+                raise ValueError(f"SymbolInfo.{field_name} must be > 0, got {value}")
+
 
 def calculate_trade_params(
     signal: str,
@@ -35,6 +46,11 @@ def calculate_trade_params(
         (lots, sl_price, tp_price)
     """
     sl_distance = abs(entry_price - trail)
+    if sl_distance < symbol_info.trade_tick_size:
+        raise ValueError(
+            f"SL distance ({sl_distance}) is smaller than tick size ({symbol_info.trade_tick_size}); "
+            "cannot size position."
+        )
     risk_amount = account_balance * (risk_pct / 100.0)
 
     # lots × (sl_distance / tick_size) × tick_value = risk_amount

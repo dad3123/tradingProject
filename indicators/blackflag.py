@@ -52,7 +52,8 @@ def wilder_ma(series: np.ndarray, period: int) -> np.ndarray:
     Starts from 0 (matches Pine Script nz() behavior).
     """
     result = np.zeros(len(series))
-    for i in range(len(series)):
+    result[0] = series[0] / period   # nz() seed: wild[0] = 0 + (tr[0]-0)/period
+    for i in range(1, len(series)):
         result[i] = result[i - 1] + (series[i] - result[i - 1]) / period
     return result
 

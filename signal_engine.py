@@ -20,6 +20,10 @@ def get_signal(
     if len(hma1) < 2:
         return "HOLD"
 
+    # Guard against NaN values during warmup period
+    if any(np.isnan(v) for v in [hma1[-1], hma1[-2], hma2[-1], hma2[-2], hma3[-1]]):
+        return "HOLD"
+
     prev_hma1_above_hma2 = hma1[-2] > hma2[-2]
     curr_hma1_above_hma2 = hma1[-1] > hma2[-1]
     curr_blackflag = trend[-1]

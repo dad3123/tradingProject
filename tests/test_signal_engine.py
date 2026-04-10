@@ -68,3 +68,12 @@ class TestGetSignal:
         hma3 = np.array([95.0])
         trend = np.array([1])
         assert get_signal(hma1, hma2, hma3, trend) == "HOLD"
+
+    def test_hold_on_nan_values(self):
+        import numpy as np
+        # Simulate NaN warmup period — should not produce a signal
+        hma1 = np.array([np.nan, 101.0])
+        hma2 = np.array([np.nan, 100.0])
+        hma3 = np.array([np.nan, 95.0])
+        trend = np.array([1, 1])
+        assert get_signal(hma1, hma2, hma3, trend) == "HOLD"

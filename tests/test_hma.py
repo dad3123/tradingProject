@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from indicators.hma import wma, hma, hma_signals
+from indicators.hma import wma, hma
 
 
 class TestWma:
@@ -32,26 +32,3 @@ class TestHma:
         assert len(result) == 100
 
 
-class TestHmaSignals:
-    def test_bullish_cross(self):
-        hma1 = np.array([99.0, 101.0])
-        hma2 = np.array([100.0, 100.0])
-        hma3 = np.array([95.0, 95.0])   # hma1 > hma3, trend filter passes
-        cross, direction = hma_signals(hma1, hma2, hma3)
-        assert cross is True
-        assert direction == "bull"
-
-    def test_bearish_cross(self):
-        hma1 = np.array([101.0, 99.0])
-        hma2 = np.array([100.0, 100.0])
-        hma3 = np.array([105.0, 105.0])  # hma1 < hma3
-        cross, direction = hma_signals(hma1, hma2, hma3)
-        assert cross is True
-        assert direction == "bear"
-
-    def test_no_cross(self):
-        hma1 = np.array([101.0, 102.0])
-        hma2 = np.array([100.0, 100.0])
-        hma3 = np.array([95.0, 95.0])
-        cross, direction = hma_signals(hma1, hma2, hma3)
-        assert cross is False

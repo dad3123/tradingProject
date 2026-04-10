@@ -65,10 +65,35 @@ class TestCalculateTradeParams:
         lots, sl, tp = calculate_trade_params(
             signal="BUY",
             entry_price=2000.0,
-            trail=1999.99,       # Tiny SL distance → huge lots → clamp to volume_max
+            trail=1999.98,       # Tiny SL distance (0.02) → huge lots → clamp to volume_max
             account_balance=1_000_000.0,
             risk_pct=10.0,
             rr_ratio=2.0,
             symbol_info=info,
         )
         assert lots <= info.volume_max
+
+    def test_raises_on_zero_sl_distance(self):
+        import pytest
+        info = self._symbol_info()
+        with pytest.raises(ValueError, match="SL distance"):
+            calculate_trade_params(
+                signal="BUY",
+                entry_price=2000.0,
+                trail=2000.0,   # Same as entry — zero SL distance
+                account_balance=10000.0,
+                risk_pct=1.0,
+                rr_ratio=2.0,
+                symbol_info=info,
+            )
+
+    def test_symbol_info_rejects_zero_fields(self):
+        import pytest
+        with pytest.raises(ValueError, match="trade_tick_size"):
+            SymbolInfo(
+                trade_tick_value=1.0,
+                trade_tick_size=0.0,   # Invalid
+                volume_min=0.01,
+                volume_max=100.0,
+                volume_step=0.01,
+            )
