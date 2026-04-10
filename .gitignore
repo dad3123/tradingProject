@@ -11,6 +11,9 @@ htmlcov/
 # Logs
 *.log
 
+# Backtest results
+backtest_results.txt
+
 # Environment
 .env
 .env.*
