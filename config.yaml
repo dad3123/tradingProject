@@ -1,0 +1,29 @@
+mt5:
+  login: 12345678          # 替换为你的账号
+  password: "your_password" # 替换为你的密码
+  server: "ICMarkets-Demo"  # 替换为你的经纪商服务器
+
+symbols:
+  - BTCUSD
+  - XAUUSD
+
+timeframe: M15             # 15分钟
+
+indicators:
+  hma:
+    length1: 50
+    length2: 100
+    length3: 200
+    source: close
+  blackflag:
+    trail_type: modified
+    atr_period: 10
+    atr_factor: 3
+
+risk:
+  risk_per_trade_pct: 1.0  # 每单风险占账户余额的百分比
+  rr_ratio: 2.0            # 止盈/止损比例
+
+scheduler:
+  poll_interval_seconds: 30  # 每隔多少秒检查一次新K线
+  warmup_bars: 300           # 启动时拉取多少根历史K线用于指标计算
