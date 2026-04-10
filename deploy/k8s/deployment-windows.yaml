@@ -1,0 +1,139 @@
+---
+# Secret：MT5 账户信息（base64 编码）
+# 生成方式：echo -n "your_value" | base64
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mt5-credentials
+  namespace: trading
+type: Opaque
+stringData:
+  login: "12345678"         # 替换为你的账号
+  password: "your_password" # 替换为你的密码
+  server: "ICMarkets-Demo"  # 替换为你的经纪商服务器
+
+---
+# ConfigMap：交易配置（非敏感部分）
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trading-config
+  namespace: trading
+data:
+  config.yaml: |
+    mt5:
+      login: ${MT5_LOGIN}
+      password: ${MT5_PASSWORD}
+      server: ${MT5_SERVER}
+
+    symbols:
+      - BTCUSD
+      - XAUUSD
+
+    timeframe: M15
+
+    indicators:
+      hma:
+        length1: 50
+        length2: 100
+        length3: 200
+        source: close
+      blackflag:
+        trail_type: modified
+        atr_period: 10
+        atr_factor: 3
+
+    risk:
+      risk_per_trade_pct: 1.0
+      rr_ratio: 2.0
+
+    scheduler:
+      poll_interval_seconds: 30
+      warmup_bars: 300
+
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: trading
+
+---
+# Deployment：调度到 Windows 节点
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trading-bot
+  namespace: trading
+  labels:
+    app: trading-bot
+spec:
+  # 单副本：同一账户不能有两个 bot 同时下单
+  replicas: 1
+  selector:
+    matchLabels:
+      app: trading-bot
+  template:
+    metadata:
+      labels:
+        app: trading-bot
+    spec:
+      # 关键：调度到 Windows 节点
+      nodeSelector:
+        kubernetes.io/os: windows
+
+      # Windows 容器不支持 tolerations for linux taint，但需要容忍 Windows 节点的 taint
+      tolerations:
+        - key: "os"
+          operator: "Equal"
+          value: "windows"
+          effect: "NoSchedule"
+
+      containers:
+        - name: trading-bot
+          image: your-registry/trading-bot:latest  # 替换为你的镜像地址
+          imagePullPolicy: Always
+
+          # 将 Secret 注入为环境变量
+          env:
+            - name: MT5_LOGIN
+              valueFrom:
+                secretKeyRef:
+                  name: mt5-credentials
+                  key: login
+            - name: MT5_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mt5-credentials
+                  key: password
+            - name: MT5_SERVER
+              valueFrom:
+                secretKeyRef:
+                  name: mt5-credentials
+                  key: server
+
+          # 挂载配置文件
+          volumeMounts:
+            - name: config
+              mountPath: C:\app\config.yaml
+              subPath: config.yaml
+            - name: logs
+              mountPath: C:\app\logs
+
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+
+      volumes:
+        - name: config
+          configMap:
+            name: trading-config
+        - name: logs
+          emptyDir: {}
+
+      # Pod 重启策略：Always 确保崩溃后自动恢复
+      restartPolicy: Always
