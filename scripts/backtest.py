@@ -151,10 +151,11 @@ def _close_trade(trade: Trade, exit_time, exit_price: float, reason: str, symbol
     trade.pnl_usd = (trade.pnl_points / symbol_info.trade_tick_size) * symbol_info.trade_tick_value * trade.lots
 
 
-def compute_stats(trades: list, account_balance: float) -> dict:
+def compute_stats(trades: list[Trade], account_balance: float) -> dict:
     """
     Compute summary statistics from a list of Trade objects.
     '持仓中' trades are excluded from all metrics except the 'open' count.
+    Trades with pnl_usd == 0.0 are classified as losses (break-even = loss).
     """
     completed = [t for t in trades if t.exit_reason in ("止盈", "止损")]
     open_trades = [t for t in trades if t.exit_reason == "持仓中"]
@@ -162,8 +163,8 @@ def compute_stats(trades: list, account_balance: float) -> dict:
     wins   = [t for t in completed if t.pnl_usd is not None and t.pnl_usd > 0]
     losses = [t for t in completed if t.pnl_usd is not None and t.pnl_usd <= 0]
 
-    total_profit = sum(t.pnl_usd for t in wins)
-    total_loss   = sum(t.pnl_usd for t in losses)
+    total_profit = float(sum(t.pnl_usd for t in wins))
+    total_loss   = float(sum(t.pnl_usd for t in losses))
     net_pnl      = total_profit + total_loss
 
     n = len(completed)
