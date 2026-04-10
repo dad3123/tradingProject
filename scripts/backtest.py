@@ -374,24 +374,26 @@ def main() -> None:
         os.remove(output_path)
 
     # ── Run backtest per symbol ───────────────────────────────────────────
-    for symbol in cfg['symbols']:
-        print(f"[{symbol}] Fetching {total_bars} bars...")
-        df = get_ohlcv(symbol, cfg['timeframe'], bars=total_bars)
-        df = df.iloc[:-1]  # drop forming candle (consistent with live scheduler)
+    try:
+        for symbol in cfg['symbols']:
+            print(f"[{symbol}] Fetching {total_bars} bars...")
+            df = get_ohlcv(symbol, cfg['timeframe'], bars=total_bars)
+            df = df.iloc[:-1]  # drop forming candle (consistent with live scheduler)
 
-        symbol_info = get_symbol_info(symbol)
+            symbol_info = get_symbol_info(symbol)
 
-        print(f"[{symbol}] Simulating trades...")
-        trades = backtest_symbol(symbol, df, cfg, symbol_info, account_balance)
+            print(f"[{symbol}] Simulating trades...")
+            trades = backtest_symbol(symbol, df, cfg, symbol_info, account_balance)
 
-        stats = compute_stats(trades, account_balance)
-        start_time = df.index[warmup]
-        end_time   = df.index[-1]
+            stats = compute_stats(trades, account_balance)
+            start_time = df.index[warmup]
+            end_time   = df.index[-1]
 
-        write_report(symbol, trades, stats, account_balance, start_time, end_time, output_path)
-        print(f"[{symbol}] Done: {stats['total']} trades, net PnL={stats['net_pnl']:+.2f} USD")
+            write_report(symbol, trades, stats, account_balance, start_time, end_time, output_path)
+            print(f"[{symbol}] Done: {stats['total']} trades, net PnL={stats['net_pnl']:+.2f} USD")
+    finally:
+        mt5.shutdown()
 
-    mt5.shutdown()
     print(f"\nBacktest complete. Results saved to: {output_path}")
 
 
