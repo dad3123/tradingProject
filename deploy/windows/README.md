@@ -169,9 +169,9 @@ docker rm trading-bot
 # 重新构建并运行（修改代码后）
 docker build -f deploy/windows/Dockerfile -t trading-bot . && `
 docker rm -f trading-bot && `
-docker run -d --name trading-bot --network host `
-  -v "${PWD}/config.yaml:/app/config.yaml" `
-  -v "${PWD}/trading.log:/app/trading.log" `
+docker run -d --name trading-bot --isolation=process `
+  -v "${PWD}/config.yaml:C:\app\config.yaml" `
+  -v "${PWD}/trading.log:C:\app\trading.log" `
   trading-bot
 ```
 
@@ -189,12 +189,11 @@ docker run -d --name trading-bot --network host `
 - config.yaml 账号信息有误 → 检查 login/password/server 字段
 - MT5 未允许自动交易 → 点击工具栏「自动交易」按钮
 
-### 容器无法连接宿主机 MT5
+### MT5 终端与 Python bot 不在同一容器
 
-**检查** `--network host` 参数是否正确添加。
-
-> 注意：Docker Desktop on Windows 的 `--network host` 在 Linux 容器模式下
-> 可能行为不同。如遇问题，尝试使用 `host.docker.internal` 替代 localhost。
+`MetaTrader5` Python 包通过 **Windows Named Pipes** 与 MT5 终端通信，
+这是 Windows 本地 IPC 机制，与网络无关。`--network host` 对此无效。
+MT5 终端必须安装在**容器内部**，与 Python bot 运行在同一个容器中。
 
 ### 端口或权限问题
 
@@ -209,10 +208,10 @@ docker run -d --name trading-bot --network host `
 ```powershell
 docker run -d `
   --name trading-bot `
-  --network host `
+  --isolation=process `
   --restart unless-stopped `
-  -v "${PWD}/config.yaml:/app/config.yaml" `
-  -v "${PWD}/trading.log:/app/trading.log" `
+  -v "${PWD}/config.yaml:C:\app\config.yaml" `
+  -v "${PWD}/trading.log:C:\app\trading.log" `
   trading-bot
 ```
 
