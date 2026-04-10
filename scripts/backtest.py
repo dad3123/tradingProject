@@ -289,3 +289,111 @@ def write_report(
 
     with open(output_path, 'a', encoding='utf-8') as f:
         f.write('\n'.join(lines))
+
+
+def backtest_symbol(
+    symbol: str,
+    df: pd.DataFrame,
+    cfg: dict,
+    symbol_info: SymbolInfo,
+    account_balance: float,
+) -> list[Trade]:
+    """
+    Compute all indicators + signals on df, then simulate trades.
+    df must include warmup bars (warmup = cfg['scheduler']['warmup_bars']).
+    """
+    hma_cfg  = cfg['indicators']['hma']
+    bf_cfg   = cfg['indicators']['blackflag']
+    warmup   = cfg['scheduler']['warmup_bars']
+    source_col = hma_cfg.get('source', 'close')
+
+    source = df[source_col].values
+    high   = df['high'].values
+    low    = df['low'].values
+    close  = df['close'].values
+
+    # Compute indicators on full array (causal, no look-ahead)
+    hma1_arr = hma(source, hma_cfg['length1'])
+    hma2_arr = hma(source, hma_cfg['length2'])
+    hma3_arr = hma(source, hma_cfg['length3'])
+    trend_arr, trail_arr = blackflag(
+        high, low, close,
+        atr_period=bf_cfg['atr_period'],
+        atr_factor=bf_cfg['atr_factor'],
+        trail_type=bf_cfg.get('trail_type', 'modified'),
+    )
+
+    # Precompute signals for each bar (O(n), each call is O(1))
+    signals = [
+        get_signal(hma1_arr[:i + 1], hma2_arr[:i + 1], hma3_arr[:i + 1], trend_arr[:i + 1])
+        for i in range(len(df))
+    ]
+
+    return _simulate_trades(df, signals, trail_arr, warmup, cfg, symbol_info, account_balance, symbol)
+
+
+def main() -> None:
+    if mt5 is None:
+        print("ERROR: MetaTrader5 is not installed. Run on Windows.")
+        sys.exit(1)
+
+    # ── Load config ───────────────────────────────────────────────────────
+    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.yaml")
+    with open(config_path, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+
+    warmup = cfg['scheduler']['warmup_bars']
+    total_bars = SIX_MONTHS_BARS + warmup + 1  # +1: drop the forming candle
+
+    # ── Connect to MT5 ────────────────────────────────────────────────────
+    if not mt5.initialize():
+        print(f"MT5 initialize() failed: {mt5.last_error()}")
+        sys.exit(1)
+    if not mt5.login(
+        login=cfg['mt5']['login'],
+        password=cfg['mt5']['password'],
+        server=cfg['mt5']['server'],
+    ):
+        print(f"MT5 login failed: {mt5.last_error()}")
+        mt5.shutdown()
+        sys.exit(1)
+
+    account_info = mt5.account_info()
+    if account_info is None:
+        print("Cannot get account info")
+        mt5.shutdown()
+        sys.exit(1)
+    account_balance = account_info.balance
+
+    # ── Output file ───────────────────────────────────────────────────────
+    output_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "backtest_results.txt",
+    )
+    if os.path.exists(output_path):
+        os.remove(output_path)
+
+    # ── Run backtest per symbol ───────────────────────────────────────────
+    for symbol in cfg['symbols']:
+        print(f"[{symbol}] Fetching {total_bars} bars...")
+        df = get_ohlcv(symbol, cfg['timeframe'], bars=total_bars)
+        df = df.iloc[:-1]  # drop forming candle (consistent with live scheduler)
+
+        symbol_info = get_symbol_info(symbol)
+
+        print(f"[{symbol}] Simulating trades...")
+        trades = backtest_symbol(symbol, df, cfg, symbol_info, account_balance)
+
+        stats = compute_stats(trades, account_balance)
+        start_time = df.index[warmup]
+        end_time   = df.index[-1]
+
+        write_report(symbol, trades, stats, account_balance, start_time, end_time, output_path)
+        print(f"[{symbol}] Done: {stats['total']} trades, net PnL={stats['net_pnl']:+.2f} USD")
+
+    mt5.shutdown()
+    print(f"\nBacktest complete. Results saved to: {output_path}")
+
+
+if __name__ == "__main__":
+    main()
