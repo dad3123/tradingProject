@@ -234,7 +234,7 @@ def write_report(
     lines.append(sep)
     lines.append(f"回测报告 - {symbol}")
     lines.append(f"回测区间：{start_str} ~ {end_str}")
-    lines.append(f"初始资金：${account_balance:.2f}")
+    lines.append(f"初始资金：${account_balance:,.2f}")
     lines.append(sep)
     lines.append("")
 

@@ -219,4 +219,4 @@ def test_write_report_contains_required_fields(tmp_path):
     assert "止损" in content
     assert "200" in content    # pnl_usd 正值出现
     assert "-100" in content   # pnl_usd 负值出现
-    assert "10000" in content  # 初始资金
+    assert "10,000" in content  # 初始资金
