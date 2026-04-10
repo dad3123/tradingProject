@@ -1,8 +1,6 @@
 import time
 import logging
-from datetime import datetime, timezone
 
-import numpy as np
 import pandas as pd
 
 try:
@@ -18,6 +16,27 @@ from risk_manager import calculate_trade_params
 from executor import place_order, get_symbol_info
 
 logger = logging.getLogger(__name__)
+
+
+def _reconnect_mt5(cfg: dict) -> bool:
+    """Attempt to reconnect to MT5. Returns True on success."""
+    try:
+        if mt5 is None:
+            return False
+        mt5.shutdown()
+        if not mt5.initialize():
+            return False
+        if not mt5.login(
+            login=cfg['mt5']['login'],
+            password=cfg['mt5']['password'],
+            server=cfg['mt5']['server'],
+        ):
+            return False
+        logger.info("MT5 reconnected successfully")
+        return True
+    except Exception as e:
+        logger.error(f"MT5 reconnect failed: {e}")
+        return False
 
 
 def run_once(symbol: str, cfg: dict) -> None:
@@ -56,12 +75,21 @@ def run_once(symbol: str, cfg: dict) -> None:
 
     # 4. Calculate risk parameters
     symbol_info = get_symbol_info(symbol)
-    entry_price = close[-1]
+    tick = mt5.symbol_info_tick(symbol)
+    if tick is None:
+        logger.error(f"[{symbol}] Cannot get tick price, skipping")
+        return
+    entry_price = tick.ask if signal == "BUY" else tick.bid
+    account_info = mt5.account_info()
+    if account_info is None:
+        logger.error(f"[{symbol}] Cannot get account info, skipping")
+        return
+    account_balance = account_info.balance
     lots, sl, tp = calculate_trade_params(
         signal=signal,
         entry_price=entry_price,
         trail=trail[-1],
-        account_balance=mt5.account_info().balance,
+        account_balance=account_balance,
         risk_pct=risk_cfg['risk_per_trade_pct'],
         rr_ratio=risk_cfg['rr_ratio'],
         symbol_info=symbol_info,
@@ -95,5 +123,9 @@ def start(cfg: dict) -> None:
                     run_once(symbol, cfg)
             except Exception as e:
                 logger.exception(f"[{symbol}] Error during run: {e}")
+                # Attempt reconnect if it looks like a connection error
+                if "Failed to fetch" in str(e) or "RuntimeError" in str(type(e).__name__):
+                    logger.info("Attempting MT5 reconnect...")
+                    _reconnect_mt5(cfg)
 
         time.sleep(interval)

@@ -51,6 +51,17 @@ def calculate_trade_params(
             f"SL distance ({sl_distance}) is smaller than tick size ({symbol_info.trade_tick_size}); "
             "cannot size position."
         )
+
+    if signal == "BUY" and trail >= entry_price:
+        raise ValueError(
+            f"BUY trail ({trail}) must be below entry ({entry_price}); "
+            "invalid SL direction"
+        )
+    if signal == "SELL" and trail <= entry_price:
+        raise ValueError(
+            f"SELL trail ({trail}) must be above entry ({entry_price}); "
+            "invalid SL direction"
+        )
     risk_amount = account_balance * (risk_pct / 100.0)
 
     # lots × (sl_distance / tick_size) × tick_value = risk_amount

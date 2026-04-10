@@ -87,6 +87,20 @@ class TestCalculateTradeParams:
                 symbol_info=info,
             )
 
+    def test_buy_raises_when_trail_above_entry(self):
+        import pytest
+        info = self._symbol_info()
+        with pytest.raises(ValueError, match="BUY trail"):
+            calculate_trade_params(
+                signal="BUY",
+                entry_price=2000.0,
+                trail=2050.0,  # Trail ABOVE entry for BUY — invalid
+                account_balance=10000.0,
+                risk_pct=1.0,
+                rr_ratio=2.0,
+                symbol_info=info,
+            )
+
     def test_symbol_info_rejects_zero_fields(self):
         import pytest
         with pytest.raises(ValueError, match="trade_tick_size"):
