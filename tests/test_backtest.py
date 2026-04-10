@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 import numpy as np
 import pandas as pd
 import pytest
-from backtest import Trade, _simulate_trades
+from backtest import Trade, _simulate_trades, compute_stats
 from risk_manager import SymbolInfo
 
 SYMBOL_INFO = SymbolInfo(
@@ -116,3 +116,62 @@ def test_open_position_at_end():
     assert len(trades) == 1
     assert trades[0].exit_reason == "持仓中"
     assert trades[0].pnl_usd is None
+
+
+def _make_trade(direction, exit_reason, pnl_usd, lots=0.5):
+    """Helper: create a minimal Trade with given outcome."""
+    t = pd.Timestamp("2025-01-01", tz="UTC")
+    pnl_points = pnl_usd / 50.0  # arbitrary, for testing only
+    return Trade(
+        symbol="TEST", direction=direction,
+        entry_time=t, entry_price=100.0, lots=lots,
+        sl=98.0, tp=104.0, entry_bar=3,
+        exit_time=t, exit_price=104.0 if pnl_usd > 0 else 98.0,
+        exit_reason=exit_reason,
+        pnl_points=pnl_points, pnl_usd=pnl_usd,
+    )
+
+
+def test_compute_stats_win_loss():
+    """胜率、总盈利、总亏损、净盈亏计算正确。"""
+    trades = [
+        _make_trade("BUY",  "止盈", 200.0),
+        _make_trade("SELL", "止损", -100.0),
+        _make_trade("BUY",  "止盈", 150.0),
+    ]
+    stats = compute_stats(trades, account_balance=10000.0)
+
+    assert stats["total"] == 3
+    assert stats["wins"] == 2
+    assert stats["losses"] == 1
+    assert stats["win_rate"] == pytest.approx(200 / 3)   # 66.67%
+    assert stats["total_profit"] == pytest.approx(350.0)
+    assert stats["total_loss"] == pytest.approx(-100.0)
+    assert stats["net_pnl"] == pytest.approx(250.0)
+
+
+def test_compute_stats_open_trade_excluded():
+    """'持仓中' 的交易不计入统计。"""
+    trades = [
+        _make_trade("BUY", "止盈", 200.0),
+        Trade(symbol="TEST", direction="BUY",
+              entry_time=pd.Timestamp("2025-01-02", tz="UTC"),
+              entry_price=100.0, lots=0.5, sl=98.0, tp=104.0, entry_bar=5,
+              exit_reason="持仓中"),
+    ]
+    stats = compute_stats(trades, account_balance=10000.0)
+
+    assert stats["total"] == 1    # 只统计已出场的
+    assert stats["open"] == 1
+
+
+def test_compute_stats_max_consec_loss():
+    """最大连续亏损次数计算正确。"""
+    trades = [
+        _make_trade("BUY", "止损", -100.0),
+        _make_trade("BUY", "止损", -100.0),
+        _make_trade("BUY", "止盈",  200.0),
+        _make_trade("BUY", "止损", -100.0),
+    ]
+    stats = compute_stats(trades, account_balance=10000.0)
+    assert stats["max_consec_loss"] == 2

@@ -149,3 +149,63 @@ def _close_trade(trade: Trade, exit_time, exit_price: float, reason: str, symbol
         trade.pnl_points = trade.entry_price - exit_price
 
     trade.pnl_usd = (trade.pnl_points / symbol_info.trade_tick_size) * symbol_info.trade_tick_value * trade.lots
+
+
+def compute_stats(trades: list, account_balance: float) -> dict:
+    """
+    Compute summary statistics from a list of Trade objects.
+    '持仓中' trades are excluded from all metrics except the 'open' count.
+    """
+    completed = [t for t in trades if t.exit_reason in ("止盈", "止损")]
+    open_trades = [t for t in trades if t.exit_reason == "持仓中"]
+
+    wins   = [t for t in completed if t.pnl_usd is not None and t.pnl_usd > 0]
+    losses = [t for t in completed if t.pnl_usd is not None and t.pnl_usd <= 0]
+
+    total_profit = sum(t.pnl_usd for t in wins)
+    total_loss   = sum(t.pnl_usd for t in losses)
+    net_pnl      = total_profit + total_loss
+
+    n = len(completed)
+    win_rate   = len(wins) / n * 100 if n else 0.0
+    avg_profit = total_profit / len(wins)   if wins   else 0.0
+    avg_loss   = total_loss   / len(losses) if losses else 0.0
+    avg_lots   = sum(t.lots for t in completed) / n if n else 0.0
+
+    # Max consecutive losses
+    max_consec_loss = consec = 0
+    for t in completed:
+        if t.pnl_usd is not None and t.pnl_usd <= 0:
+            consec += 1
+            max_consec_loss = max(max_consec_loss, consec)
+        else:
+            consec = 0
+
+    # Max drawdown (peak-to-trough of cumulative pnl)
+    cumulative = peak = max_drawdown = 0.0
+    for t in completed:
+        if t.pnl_usd is not None:
+            cumulative += t.pnl_usd
+        if cumulative > peak:
+            peak = cumulative
+        dd = peak - cumulative
+        if dd > max_drawdown:
+            max_drawdown = dd
+    max_drawdown_pct = (max_drawdown / account_balance * 100) if account_balance > 0 else 0.0
+
+    return {
+        "total":            n,
+        "open":             len(open_trades),
+        "wins":             len(wins),
+        "losses":           len(losses),
+        "win_rate":         win_rate,
+        "total_profit":     total_profit,
+        "total_loss":       total_loss,
+        "net_pnl":          net_pnl,
+        "avg_profit":       avg_profit,
+        "avg_loss":         avg_loss,
+        "max_consec_loss":  max_consec_loss,
+        "max_drawdown":     max_drawdown,
+        "max_drawdown_pct": max_drawdown_pct,
+        "avg_lots":         avg_lots,
+    }
