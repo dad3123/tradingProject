@@ -13,31 +13,32 @@
 | MetaTrader 5 终端 | 最新版 | https://www.metatrader5.com/en/download |
 | Git | 最新版 | https://git-scm.com/download/win |
 
-> **重要**：MetaTrader5 Python 包必须与 MT5 终端运行在**同一台 Windows 机器**上，
-> 因此本方案采用「MT5 终端运行在 Windows 宿主机 + Python Bot 运行在 Docker 容器」架构，
-> 通过共享网络通信。
+> **重要**：MetaTrader5 Python 包通过 Windows Named Pipes（本地 IPC）与 MT5 终端通信，
+> 两者必须运行在**同一 Windows 容器内**。
+> 本方案将 MT5 终端和 Python Bot 一同打包进 Windows 容器运行。
 
 ---
 
 ## 架构说明
 
 ```
-Windows 宿主机
-├── MetaTrader 5 Terminal（直接安装，已登录账户）
-└── Docker Desktop
-    └── Python Bot 容器
-        ├── main.py
-        └── MetaTrader5 Python 包（连接宿主机上的 MT5）
+Windows 容器
+├── MetaTrader 5 Terminal（安装在容器内，通过卷挂载持久化数据）
+└── Python Bot
+    ├── main.py
+    └── MetaTrader5 Python 包（通过 Named Pipes 连接同一容器内的 MT5）
 ```
+
+> **为什么不能 MT5 在宿主机、Python bot 在容器？**
+> `MetaTrader5` Python 包通过 **Windows Named Pipes**（本地 IPC）与 MT5 终端通信，
+> Named Pipes 无法跨容器边界，因此两者必须在同一个容器内运行。
 
 ---
 
 ## 第一步：安装并配置 MetaTrader 5
 
-1. 下载并安装 MT5 终端
-2. 打开 MT5，登录你的经纪商账户
-3. 确保 MT5 保持**后台运行**状态
-4. 在 MT5 中开启 AlgoTrading（工具栏上的「自动交易」按钮变绿）
+MT5 终端将**安装在容器内部**，无需在宿主机上单独安装 MT5。
+宿主机只需安装 Docker Desktop。
 
 ---
 
@@ -118,7 +119,7 @@ docker run -d `
   --name trading-bot `
   --isolation=process `
   -v "${PWD}/config.yaml:C:\app\config.yaml" `
-  -v "${PWD}/trading.log:C:\app\trading.log" `
+  -v "${PWD}/logs:C:\app\logs" `
   trading-bot
 ```
 
@@ -128,11 +129,7 @@ docker run -d `
 |------|------|
 | `--isolation=process` | 进程隔离模式，性能更好，与宿主机共享内核 |
 | `-v config.yaml` | 挂载配置文件，修改后无需重新构建镜像 |
-| `-v trading.log` | 挂载日志文件，方便在宿主机查看 |
-
-> Windows 容器中的 MT5 终端需要**单独安装在容器内**或通过挂载卷提供，
-> 因为 Named Pipes 不能跨主机边界通信。
-> 最简单方案：把 MT5 终端和 Python bot 都放在同一个容器里运行。
+| `-v logs` | 挂载日志**目录**（不能挂载单个文件，否则 Docker 会将其当目录创建） |
 
 ---
 
@@ -171,7 +168,7 @@ docker build -f deploy/windows/Dockerfile -t trading-bot . && `
 docker rm -f trading-bot && `
 docker run -d --name trading-bot --isolation=process `
   -v "${PWD}/config.yaml:C:\app\config.yaml" `
-  -v "${PWD}/trading.log:C:\app\trading.log" `
+  -v "${PWD}/logs:C:\app\logs" `
   trading-bot
 ```
 
@@ -211,7 +208,7 @@ docker run -d `
   --isolation=process `
   --restart unless-stopped `
   -v "${PWD}/config.yaml:C:\app\config.yaml" `
-  -v "${PWD}/trading.log:C:\app\trading.log" `
+  -v "${PWD}/logs:C:\app\logs" `
   trading-bot
 ```
 
