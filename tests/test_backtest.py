@@ -209,7 +209,8 @@ def test_write_report_contains_required_fields(tmp_path):
         output_path=output,
     )
 
-    content = open(output, encoding="utf-8").read()
+    with open(output, encoding="utf-8") as f:
+        content = f.read()
     assert "初始资金" in content
     assert "手数" in content
     assert "总盈利" in content

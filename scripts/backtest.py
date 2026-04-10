@@ -285,6 +285,7 @@ def write_report(
     lines.append("")
     lines.append(sep)
     lines.append("")
+    lines.append("")
 
     with open(output_path, 'a', encoding='utf-8') as f:
         f.write('\n'.join(lines))
