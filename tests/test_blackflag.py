@@ -59,3 +59,17 @@ class TestBlackflag:
         # Last bars should be uptrend
         assert trend[-1] == 1
         assert trail[-1] < close[-1]
+
+    def test_unmodified_trail_type(self):
+        close = np.linspace(100, 200, 300)
+        # Use narrow wicks so close-to-close gaps dominate, making the two
+        # true-range formulas produce different values.
+        high = close + 0.1
+        low = close - 0.1
+        trend_u, trail_u = blackflag(high, low, close, atr_period=10, atr_factor=3, trail_type="unmodified")
+        trend_m, trail_m = blackflag(high, low, close, atr_period=10, atr_factor=3, trail_type="modified")
+        # Both should produce valid uptrend results
+        assert trend_u[-1] == 1
+        assert trail_u[-1] < close[-1]
+        # The two formulas produce different values
+        assert not np.allclose(trail_u, trail_m)

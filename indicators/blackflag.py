@@ -58,12 +58,31 @@ def wilder_ma(series: np.ndarray, period: int) -> np.ndarray:
     return result
 
 
+def _unmodified_true_range(
+    high: np.ndarray,
+    low: np.ndarray,
+    close: np.ndarray,
+) -> np.ndarray:
+    """Standard true range: max(H-L, |H-C[1]|, |L-C[1]|)"""
+    n = len(close)
+    result = np.zeros(n)
+    result[0] = high[0] - low[0]
+    for i in range(1, n):
+        result[i] = max(
+            high[i] - low[i],
+            abs(high[i] - close[i - 1]),
+            abs(low[i]  - close[i - 1]),
+        )
+    return result
+
+
 def blackflag(
     high: np.ndarray,
     low: np.ndarray,
     close: np.ndarray,
     atr_period: int = 10,
     atr_factor: float = 3.0,
+    trail_type: str = "modified",   # "modified" or "unmodified"
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Blackflag FTS trailing stop indicator.
@@ -73,7 +92,10 @@ def blackflag(
         trail: np.ndarray, trailing stop price per bar
     """
     n = len(close)
-    tr = modified_true_range(high, low, close, atr_period)
+    if trail_type == "modified":
+        tr = modified_true_range(high, low, close, atr_period)
+    else:
+        tr = _unmodified_true_range(high, low, close)
     wild = wilder_ma(tr, atr_period)
 
     trend_up   = np.zeros(n)

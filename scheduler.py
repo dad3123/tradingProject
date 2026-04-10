@@ -13,7 +13,7 @@ from indicators.hma import hma
 from indicators.blackflag import blackflag
 from signal_engine import get_signal
 from risk_manager import calculate_trade_params
-from executor import place_order, get_symbol_info
+from executor import place_order, get_symbol_info, has_open_position
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,8 @@ def run_once(symbol: str, cfg: dict) -> None:
     Fetch latest data, compute indicators, check signal, place order.
     Called once per 15min candle close.
     """
+    if mt5 is None:
+        raise RuntimeError("MetaTrader5 is not installed; cannot run scheduler")
     warmup = cfg['scheduler']['warmup_bars']
     hma_cfg = cfg['indicators']['hma']
     bf_cfg  = cfg['indicators']['blackflag']
@@ -53,7 +55,8 @@ def run_once(symbol: str, cfg: dict) -> None:
     df = get_ohlcv(symbol, cfg['timeframe'], bars=warmup + 1)
     df = df.iloc[:-1]  # only use closed candles
 
-    close = df['close'].values
+    source_col = hma_cfg.get('source', 'close')
+    close = df[source_col].values   # HMA source (configurable: close/open/high/low)
     high  = df['high'].values
     low   = df['low'].values
 
@@ -63,7 +66,8 @@ def run_once(symbol: str, cfg: dict) -> None:
     hma3 = hma(close, hma_cfg['length3'])
     trend, trail = blackflag(high, low, close,
                              atr_period=bf_cfg['atr_period'],
-                             atr_factor=bf_cfg['atr_factor'])
+                             atr_factor=bf_cfg['atr_factor'],
+                             trail_type=bf_cfg.get('trail_type', 'modified'))
 
     # 3. Get signal
     signal = get_signal(hma1, hma2, hma3, trend)
@@ -71,6 +75,11 @@ def run_once(symbol: str, cfg: dict) -> None:
                 f"Trend={trend[-1]}, Trail={trail[-1]:.4f}")
 
     if signal == "HOLD":
+        return
+
+    # Early check: skip expensive API calls if position already exists
+    if has_open_position(symbol):
+        logger.info(f"[{symbol}] Position already open, skipping.")
         return
 
     # 4. Calculate risk parameters
@@ -124,7 +133,7 @@ def start(cfg: dict) -> None:
             except Exception as e:
                 logger.exception(f"[{symbol}] Error during run: {e}")
                 # Attempt reconnect if it looks like a connection error
-                if "Failed to fetch" in str(e) or "RuntimeError" in str(type(e).__name__):
+                if isinstance(e, RuntimeError):
                     logger.info("Attempting MT5 reconnect...")
                     _reconnect_mt5(cfg)
 
