@@ -25,7 +25,11 @@ indicators:
   blackflag:
     trail_type: modified
     atr_period: 10
-    atr_factor: 3
+    atr_factor: 3.5        # 原 3.0; 调大止损弹性，减少 BTC/XAU 剧烈波动中的假止损
+  adx:
+    enabled: true
+    period: 14
+    threshold: 20.0        # ADX < 20 视为横盘震荡，过滤假信号；可调至 25 进一步收紧
 
 risk:
   risk_per_trade_pct: 1.0  # 每单风险占账户余额的百分比

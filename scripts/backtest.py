@@ -27,6 +27,7 @@ except ImportError:
 from data_feed import get_ohlcv, get_ohlcv_range
 from indicators.hma import hma
 from indicators.blackflag import blackflag
+from indicators.adx import adx as compute_adx
 from signal_engine import get_signal
 from risk_manager import SymbolInfo, calculate_trade_params
 from executor import get_symbol_info
@@ -311,6 +312,7 @@ def backtest_symbol(
     """
     hma_cfg  = cfg['indicators']['hma']
     bf_cfg   = cfg['indicators']['blackflag']
+    adx_cfg  = cfg['indicators'].get('adx', {})
     warmup   = warmup_override if warmup_override is not None else cfg['scheduler']['warmup_bars']
     source_col = hma_cfg.get('source', 'close')
 
@@ -330,6 +332,12 @@ def backtest_symbol(
         trail_type=bf_cfg.get('trail_type', 'modified'),
     )
 
+    # ADX: optional trending-market filter
+    adx_period    = adx_cfg.get('period', 14)
+    adx_threshold = adx_cfg.get('threshold', 20.0)
+    use_adx       = adx_cfg.get('enabled', True)
+    adx_arr       = compute_adx(high, low, close, adx_period) if use_adx else None
+
     # Precompute signals for each bar.
     # get_signal() only reads [-1] and [-2], so we pass a 2-element window
     # instead of growing slices, avoiding repeated view object creation.
@@ -339,7 +347,8 @@ def backtest_symbol(
         h2 = hma2_arr[i - 1 : i + 1]
         h3 = hma3_arr[i - 1 : i + 1]
         tr = trend_arr[i - 1 : i + 1]
-        signals[i] = get_signal(h1, h2, h3, tr)
+        ax = adx_arr[i - 1 : i + 1] if adx_arr is not None else None
+        signals[i] = get_signal(h1, h2, h3, tr, adx=ax, adx_threshold=adx_threshold)
 
     return _simulate_trades(df, signals, trail_arr, warmup, cfg, symbol_info, account_balance, symbol)
 
@@ -388,13 +397,16 @@ def main() -> None:
     initial_balance_cfg = bt_cfg.get('initial_balance')
     account_balance = float(initial_balance_cfg) if initial_balance_cfg is not None else account_info.balance
 
-    # ── Output file ───────────────────────────────────────────────────────
-    output_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "backtest_results.txt",
-    )
-    if os.path.exists(output_path):
-        os.remove(output_path)
+    # ── Output file (logs/ folder with timestamp) ────────────────────────
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    logs_dir     = os.path.join(project_root, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    run_ts    = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_path = os.path.join(logs_dir, f"backtest_{run_ts}.txt")
+    # Also update the canonical shortcut in project root
+    latest_path = os.path.join(project_root, "backtest_results.txt")
+    if os.path.exists(latest_path):
+        os.remove(latest_path)
 
     # ── Run backtest per symbol ───────────────────────────────────────────
     try:
@@ -425,7 +437,12 @@ def main() -> None:
     finally:
         mt5.shutdown()
 
-    print(f"\nBacktest complete. Results saved to: {output_path}")
+    # Keep a copy at the project root for quick access
+    import shutil
+    shutil.copy2(output_path, latest_path)
+    print(f"\nBacktest complete.")
+    print(f"  Log file : {output_path}")
+    print(f"  Latest   : {latest_path}")
 
 
 if __name__ == "__main__":
